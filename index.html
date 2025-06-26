@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>样本设计采样器 • Sample Designer</title>
+
+  <!-- Tailwind CDN（无需构建）-->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- SheetJS（解析 Excel） & FileSaver（导出）-->
+  <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+</head>
+
+<body class="min-h-screen bg-gray-50 flex flex-col items-center p-6">
+  <h1 class="text-3xl font-bold mb-6">
+    📊 样本设计采样器&nbsp;/&nbsp;Sample&nbsp;Designer
+  </h1>
+
+  <!-- STEP 0  上传 Excel -->
+  <label class="block mb-2 font-medium">
+    选择原始 <code>.xlsx</code> 文件 / Upload Excel：
+  </label>
+  <input id="file" type="file" accept=".xlsx" class="mb-8" />
+
+  <!-- STEP 1  选择父列 / 子列 -->
+  <section id="columnSelectors" class="w-full max-w-4xl mb-8 hidden">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium">父列 / Parent Column</label>
+        <select id="parentSelect" class="w-full border rounded p-2"></select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium">
+          子列 / Child Column&nbsp;(可选 / optional)
+        </label>
+        <select id="childSelect" class="w-full border rounded p-2"></select>
+      </div>
+    </div>
+  </section>
+
+  <!-- STEP 2  父层 & 子层 -->
+  <section id="parentQuotaContainer" class="w-full max-w-4xl mb-8"></section>
+  <section id="childQuotaContainer"  class="w-full max-w-4xl mb-8"></section>
+
+  <!-- STEP 3  并列约束区（JS 动态插入） -->
+
+  <!-- 控制按钮 -->
+  <div class="flex gap-4 mb-6">
+    <button id="run"
+            class="px-6 py-2 rounded-lg bg-blue-600   text-white hover:bg-blue-700 hidden">
+      生成样本 / Generate
+    </button>
+    <button id="download"
+            class="px-6 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 hidden">
+      下载结果 (.xlsx) / Download
+    </button>
+  </div>
+
+  <!-- 日志 -->
+  <pre id="log"
+       class="w-full max-w-4xl h-64 bg-white border rounded-lg p-4 overflow-auto text-sm"></pre>
+
+  <!-- 业务逻辑 -->
+  <script src="main.js"></script>
+
+  <footer class="mt-auto py-3">
+    <p class="text-center text-xs text-gray-400">
+      Designed&nbsp;by&nbsp;Stephanie&nbsp;Xu
+    </p>
+  </footer>
+</body>
+</html>
