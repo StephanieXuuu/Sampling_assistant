@@ -25,8 +25,12 @@ const esc = str => (window.CSS && CSS.escape) ? CSS.escape(str) :
  * 全局状态
  * ------------------------------------------------------------------ */
 let rawData=[], headers=[];
-let parentCol='', childCol='';
-let uniqueParent=[], uniqueChild={};
+let childCols = [];                   // ← 替代单一 childCol
+let childPriority = {};               // { colName: prio }
+let childBucketMap = {};              // { colName: {orig:alias} }
+let uniqueChild = {};                 // { parent → {col → [values]} }
+let parentCol='';
+let uniqueParent=[];
 let bucketEnabled=false;
 /* 让 need() 能拿到本轮“目标样本量” */
 let TOTAL_SAMPLE = 0;
@@ -70,12 +74,12 @@ function buildColumnSelectors(){
     buildParentQuotaUI(byPar);
   };
 
-  c.onchange=e=>{
-    childCol=e.target.value||'';
-    $('childQuotaContainer').innerHTML='';
-    if(childCol) buildChildQuotaUI();
-    $('run').classList.remove('hidden');
-  };
+  c.onchange = e => {
+  childCols = [...e.target.selectedOptions].map(o => o.value);
+  $('childQuotaContainer').innerHTML = '';
+  if (childCols.length) buildChildQuotaUI();
+  $('run').classList.remove('hidden');
+};
 }
 
 /* ------------------------------------------------------------------
@@ -106,21 +110,83 @@ function safeId(s) {
 }
 
 
-function buildChildQuotaUI(){
-  const byPar=gb(rawData,parentCol), box=$('childQuotaContainer');
-  box.innerHTML='<h2 class="font-semibold mb-2">子层配额 / Child quotas</h2>';
-  uniqueChild={};
-  uniqueParent.forEach(pv=>{
-    const ch=[...new Set(byPar[pv].map(r=>r[childCol]))];
-    uniqueChild[pv]=ch;
-    const tid = safeId(pv); 
-    box.insertAdjacentHTML('beforeend',`<details class="mb-3"><summary class="cursor-pointer py-1 px-2 bg-gray-100 rounded">${parentCol}: ${pv}</summary><div class="mt-2 overflow-x-auto"><table class="w-full text-sm border"><thead class="bg-gray-50"><tr><th class="border px-2 py-1">${childCol}</th><th class="border px-2 py-1">可用</th><th class="border px-2 py-1">数量</th><th class="border px-2 py-1">比例</th></tr></thead><tbody id="${tid}"></tbody></table></div></details>`);
-    const tb=$(tid);
-    ch.forEach(cv=>{
-      tb.insertAdjacentHTML('beforeend',`<tr><td class="border px-2 py-1">${cv}</td><td class="border px-2 py-1 text-right text-gray-500">≤ ${byPar[pv].filter(r=>r[childCol]===cv).length}</td><td class="border px-2 py-1"><input data-ccount="${pv}::${cv}" type="number" class="w-20 border rounded p-1"></td><td class="border px-2 py-1"><input data-cratio="${pv}::${cv}" class="w-24 border rounded p-1"></td></tr>`);
+function buildChildQuotaUI() {
+  const byPar = gb(rawData, parentCol);
+  const box   = $('childQuotaContainer');
+  box.innerHTML = '<h2 class="font-semibold mb-2">子层配额 / Child quotas</h2>';
+  uniqueChild = {};
+
+  // 每一个子列独立生成面板
+  childCols.forEach((col, idx) => {
+    const cid = safeId('col_' + col);
+    // Priority 下拉：默认按选择顺序 1,2,3…
+    const prioOpt = childCols.map((_,i)=>`<option value="${i+1}" ${i===idx?'selected':''}>${i+1}</option>`).join('');
+
+    box.insertAdjacentHTML('beforeend', `
+      <details open class="mb-4 border rounded">
+        <summary class="cursor-pointer py-1 px-2 bg-gray-100 flex justify-between items-center">
+          <span>${col}</span>
+          <span class="text-sm flex items-center gap-1">
+            Priority
+            <select data-cprio="${col}" class="border rounded px-1 py-0.5 text-sm">${prioOpt}</select>
+            <label class="flex items-center gap-1">
+              <input type="checkbox" data-cbucket-toggle="${col}" class="accent-blue-600">
+              Bucket
+            </label>
+          </span>
+        </summary>
+        <div id="${cid}" class="mt-2"></div>
+      </details>`);
+
+    // 为每个父值生成表格
+    const wrap = $(cid);
+    uniqueParent.forEach(pv => {
+      const ch = [...new Set(byPar[pv].map(r => r[col]))];
+      (uniqueChild[pv] ||= {})[col] = ch;
+
+      const tid = safeId(`${pv}_${col}`);
+      wrap.insertAdjacentHTML('beforeend', `
+        <div class="mb-3">
+          <h4 class="font-semibold text-sm mb-1">${parentCol}: ${pv}</h4>
+          <table class="w-full text-sm border">
+            <thead class="bg-gray-50">
+              <tr><th class="border px-2 py-1">${col}</th><th class="border px-2 py-1">≤可用</th>
+                  <th class="border px-2 py-1">数量</th><th class="border px-2 py-1">比例</th></tr>
+            </thead>
+            <tbody id="${tid}"></tbody>
+          </table>
+        </div>`);
+
+      const tb = $(tid);
+      ch.forEach(v => {
+        tb.insertAdjacentHTML('beforeend', `
+          <tr>
+            <td class="border px-2 py-1">${v}</td>
+            <td class="border px-2 py-1 text-gray-500 text-right">≤ ${byPar[pv].filter(r=>r[col]===v).length}</td>
+            <td class="border px-2 py-1"><input data-ccount="${col}::${pv}::${v}" type="number" class="w-20 border rounded p-1"></td>
+            <td class="border px-2 py-1"><input data-cratio="${col}::${pv}::${v}"  class="w-24 border rounded p-1"></td>
+          </tr>`);
+      });
     });
+
+    // 保存 priority
+    card = box.lastElementChild;               // 刚加的 <details>
+    card.querySelector(`[data-cprio="${col}"]`).onchange = e => {
+      childPriority[col] = +e.target.value;
+    };
+
+    // Bucket 开关
+    card.querySelector(`[data-cbucket-toggle="${col}"]`).onchange = e => {
+      const on = e.target.checked;
+      // 简化做法：直接提示“列级 Bucket 先留空”；如需真映射再补 UI
+      if (on) alert('TODO: 为子列映射 Bucket 的 UI');
+    };
+
+    // 默认优先级
+    childPriority[col] = idx + 1;
   });
 }
+
 
 /* ------------------------------------------------------------------
  * 并列约束 UI
@@ -177,7 +243,7 @@ function need(obj = {}, avail){
   // console.log('TOTAL_SAMPLE =', TOTAL_SAMPLE); // 调试用
 
 $('run').onclick = () => {
-  const pQ={}, cQ={}, gQ={}, bucketMap={};
+  const pQ={}, gQ={},bucketMap={};
 
   /* ---------- 父层配额 ---------- */
   uniqueParent.forEach(v=>{
@@ -188,13 +254,13 @@ $('run').onclick = () => {
     pQ[bucket]={count:cntInp?cntInp.value.trim():'',ratio:ratInp?ratInp.value.trim():''};
     if(bucketEnabled){(bucketMap[parentCol] ||= {})[v]=bucket;}
   });
-
-  /* ---------- 子层配额 ---------- */
+  const cQ = collectChildQuotas();
+  /* ---------- 子层配额 ---------- 
   document.querySelectorAll('[data-ccount]').forEach(inp=>{
     const key=inp.dataset.ccount;
     const ratioInp=document.querySelector(`[data-cratio="${esc(key)}"]`);
     cQ[key]={count:inp.value.trim(), ratio:ratioInp?ratioInp.value.trim():''};
-  });
+  });*/
 
   /* ---------- 并列配额 ---------- */
   document.querySelectorAll('[data-gcount]').forEach(inp=>{
@@ -223,6 +289,26 @@ $('run').onclick = () => {
     for(const col in gBucketMap){const orig=t[col]; if(gBucketMap[col][orig]) t[col]=gBucketMap[col][orig];}
     return t;
   });
+/* ------------------------------------------------------------------
+ * collectChildQuotas — 读取多子列配额
+ * 返回形如 { "列::父::值": {count:"", ratio:""} }
+ * ------------------------------------------------------------------ */
+function collectChildQuotas() {
+  const out = {};
+  document.querySelectorAll('[data-ccount]').forEach(inp => {
+    const key = inp.dataset.ccount;                       // col::parent::value
+    const ratioInp = document.querySelector(
+      `[data-cratio="${esc(key)}"]`);
+    out[key] = {
+      count : inp.value.trim(),
+      ratio : ratioInp ? ratioInp.value.trim() : ''
+    };
+    if (!ok(out[key].count) && !ok(out[key].ratio)) {
+      delete out[key];                 // ★ 新增
+    }
+  });
+  return out;
+}
 
   /* ---------- 抽样 & 导出 ---------- */
   const sampled = runSampling(data, pQ, cQ, gQ, bucketMap);
@@ -237,12 +323,31 @@ function runSampling(data, pQ, cQ, gQ, bucketMap){
   const mappedParent=bucketEnabled?uniqueParent.map(v=>bucketMap[parentCol]?.[v]||v):uniqueParent;
   const revMap=bucketEnabled?Object.fromEntries(Object.entries(bucketMap[parentCol]||{}).map(([o,a])=>[a,o])):{};
   const out=[];
-  mappedParent.forEach(pv=>{
-    const pool=shf(byPar[pv] || byPar[revMap[pv]] || []);
-    let left=need(pQ[pv],pool.length);
-    if(childCol){const byCh=gb(pool,childCol);(uniqueChild[revMap[pv]||pv]||[]).forEach(cv=>{if(left<=0)return;const take=need(cQ[`${pv}::${cv}`],(byCh[cv]||[]).length);out.push(...(byCh[cv]||[]).slice(0,take));left-=take;});}
-    if(left>0) out.push(...pool.slice(0,left));
-  });
+  mappedParent.forEach(pv => {
+    let pool = shf(byPar[pv] || byPar[revMap[pv]] || []);
+    let left = need(pQ[pv], pool.length);
+
+    // ① 先按子列优先级排序
+    const colsByPrio = [...childCols].sort((a,b)=>childPriority[a]-childPriority[b]);
+
+    colsByPrio.forEach(col => {
+      if (left <= 0) return;
+      const byVal = gb(pool, col);
+      (uniqueChild[pv][col] || []).forEach(v => {
+        if (left <= 0) return;
+        const key = `${col}::${pv}::${v}`;
+        const want = need(cQ[key], (byVal[v] || []).length); // ① 想要多少
+        const take = Math.min(want, left);                   // ② 最多不能超过 left
+        out.push(...(byVal[v]||[]).slice(0, take));
+        left -= take;
+      });
+      // 把抽掉的行从 pool 删掉
+      pool = pool.filter(r => !out.includes(r));
+    });
+
+    if (left > 0) out.push(...pool.slice(0, left));   // 父层补齐
+});
+
 
   /* ---------- 并列配额检查 & 解释 ---------- */
   const lack = [], surplus = [];   // ← 新增一张 surplus 表

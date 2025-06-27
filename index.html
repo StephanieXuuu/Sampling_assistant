@@ -34,7 +34,11 @@
         <label class="block text-sm font-medium">
           子列 / Child Column&nbsp;(可选 / optional)
         </label>
-        <select id="childSelect" class="w-full border rounded p-2"></select>
+        <!-- index.html 原来是 <select id="childSelect"> … -->
+        <select id="childSelect" multiple size="6" class="w-full border rounded p-2"></select>
+        <p class="mt-1 text-xs text-gray-500">
+          ⌘ / Ctrl/Command ＋ 单击即可多选多个子列/You can select multiple by pressing Ctrl or Command and Column Names
+        </p>
       </div>
     </div>
   </section>
