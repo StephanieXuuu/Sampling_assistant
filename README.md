@@ -1,3 +1,6 @@
+### The link to the sampling site
+https://stephaniexuuu.github.io/Sampling_assistant/
+
 ### Words from me
 Dear consultants,
 
