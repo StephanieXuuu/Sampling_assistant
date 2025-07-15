@@ -42,13 +42,19 @@ const globalConstraints = {};  // { col: {useBucket:bool} }
  * Excel 载入
  * ------------------------------------------------------------------ */
 $('file').onchange = async e => {
-  const f=e.target.files[0]; if(!f) return;
-  rawData = XLSX.utils.sheet_to_json(
-    XLSX.read(await f.arrayBuffer(),{type:'array'}).Sheets.Sheet1,
-    {defval:''});
-  headers = Object.keys(rawData[0]);
+  // 先清空旧并列区域
+  const old = $('constraintArea');
+  if (old) old.remove();                       // 删除旧的 DOM
+  Object.keys(globalConstraints).forEach(k => delete globalConstraints[k]); // 清空对象
+
+  /* 下面保持原逻辑 —— 读取文件、建列下拉 */
+  const f = e.target.files[0]; if (!f) return;
+  rawData  = XLSX.utils.sheet_to_json(
+               XLSX.read(await f.arrayBuffer(), {type:'array'}).Sheets.Sheet1,
+               {defval:''});
+  headers  = Object.keys(rawData[0]);
   buildColumnSelectors();
-  buildConstraintArea();
+  buildConstraintArea();        // 这里会新建一块干净的区域
   $('columnSelectors').classList.remove('hidden');
   log(`📄 载入 ${rawData.length} 行`);
 };
